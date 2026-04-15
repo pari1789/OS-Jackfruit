@@ -1,183 +1,254 @@
-# Mini Container Runtime with Kernel Memory Monitor
-
-## Overview
-
-This project implements a lightweight container runtime in user space along with a Linux kernel module for memory monitoring and enforcement.
-
-The system supports:
-
-* Creating isolated containers using Linux namespaces
-* Running multiple containers concurrently
-* Capturing container logs
-* Tracking container metadata
-* Enforcing memory limits via a kernel module
+# Mini Container Runtime with Kernel Monitor
 
 ---
 
-## Features
+# 1. Team Information
 
-### 1. Container Runtime
-
-* Uses `clone()` with namespaces:
-
-  * UTS (hostname isolation)
-  * Mount namespace
-* Supports multiple containers running simultaneously
-* Containers run in background
-
-### 2. Logging System
-
-* Pipes used to capture stdout/stderr from containers
-* Logs stored per container in:
-
-  ```
-  boilerplate/logs/<container_id>.log
-  ```
-
-### 3. Container Management
-
-Commands implemented:
-
-```
-./engine start <id> <rootfs> <command>
-./engine ps
-./engine stop <id>
-```
-
-* `start` → launches container
-* `ps` → lists running containers
-* `stop` → kills container
+| Name      | SRN |
+| --------- | --- |
+| Your Name | SRN |
+| Teammate  | SRN |
 
 ---
 
-### 4. Kernel Module (monitor.ko)
+# 2. Build, Load, and Run Instructions
 
-* Character device: `/dev/container_monitor`
-* Uses `ioctl` for communication
-* Tracks container PIDs
-* Periodically checks memory usage
-* Kills containers exceeding limit
+## Environment
 
----
+Tested on:
 
-## Architecture
-
-User Space:
-
-* `engine.c` → container runtime + CLI
-* Pipes → logging
-* File (`containers.txt`) → metadata tracking
-
-Kernel Space:
-
-* `monitor.c`
-* Tracks processes using linked list
-* Kernel thread periodically checks memory
-* Sends `SIGKILL` when limit exceeded
+* Ubuntu 22.04 / 24.04 VM
 
 ---
 
-## Memory Enforcement
+## Build
 
-* Memory usage obtained via:
-
-  ```c
-  task->mm->total_vm << PAGE_SHIFT
-  ```
-
-* Default limits:
-
-  * Soft limit: 1 MB
-  * Hard limit: 2 MB
-
-* When exceeded:
-
-  ```
-  Monitor: Killing PID XXXX
-  ```
-
----
-
-## How to Run
-
-### 1. Setup root filesystem
-
-```
-mkdir rootfs-base
-tar -xzf alpine-minirootfs.tar.gz -C rootfs-base
-
-cp -a rootfs-base rootfs-alpha
-mkdir -p rootfs-alpha/proc
-```
-
----
-
-### 2. Build runtime
-
-```
-cd boilerplate
+```bash
 make
 ```
 
 ---
 
-### 3. Build and load kernel module
+## Load Kernel Module
 
-```
-make
+```bash
 sudo insmod monitor.ko
 ```
 
-Create device:
+---
 
+## Verify Device
+
+```bash
+ls -l /dev/container_monitor
 ```
-cat /proc/devices | grep container_monitor
-sudo mknod /dev/container_monitor c <MAJOR> 0
-sudo chmod 666 /dev/container_monitor
+
+📸 **Screenshot Placeholder:**
+`screenshots/device.png`
+(Shows character device successfully created)
+
+---
+
+## Start Supervisor
+
+```bash
+sudo ./engine supervisor ./rootfs-base
+```
+
+📸 **Screenshot Placeholder:**
+`screenshots/supervisor.png`
+(Shows supervisor running)
+
+---
+
+## Prepare Root Filesystems
+
+```bash
+cp -a ./rootfs-base ./rootfs-alpha
+cp -a ./rootfs-base ./rootfs-beta
+mkdir -p ./rootfs-alpha/proc
+mkdir -p ./rootfs-beta/proc
 ```
 
 ---
 
-### 4. Run container
+## Start Containers
 
+```bash
+sudo ./engine start alpha ./rootfs-alpha /bin/sh --soft-mib 48 --hard-mib 80
+sudo ./engine start beta ./rootfs-beta /bin/sh --soft-mib 64 --hard-mib 96
 ```
-sudo ./engine start alpha ../rootfs-alpha /bin/sh
-```
+
+📸 **Screenshot Placeholder:**
+`screenshots/start.png`
+(Shows containers starting)
 
 ---
 
-### 5. View logs
+## List Containers
 
+```bash
+sudo ./engine ps
 ```
-cat logs/alpha.log
-```
+
+📸 **Screenshot Placeholder:**
+`screenshots/ps.png`
+(Shows metadata tracking)
 
 ---
 
-### 6. Check kernel output
+## View Logs
 
+```bash
+sudo ./engine logs alpha
 ```
+
+📸 **Screenshot Placeholder:**
+`screenshots/logs.png`
+(Shows container logs)
+
+---
+
+## Stop Containers
+
+```bash
+sudo ./engine stop alpha
+sudo ./engine stop beta
+```
+
+📸 **Screenshot Placeholder:**
+`screenshots/stop.png`
+(Shows containers being stopped)
+
+---
+
+## Inspect Kernel Logs
+
+```bash
 dmesg | tail
 ```
 
----
-
-## Example Output
-
-```
-Monitor: Registered PID 7626
-Monitor: PID 7626 mem=1650688
-Monitor: Killing PID 7626
-```
+📸 **Screenshot Placeholder (MOST IMPORTANT):**
+`screenshots/kill.png`
+(Shows memory usage + container kill)
 
 ---
 
-## Screenshots (included)
+## Unload Module
 
-1. Container running (`ps`)
-2. Multiple containers
-3. Logging output
-4. Kernel module loaded
-5. Memory enforcement (kill)
+```bash
+sudo rmmod monitor
+```
+
+📸 **Screenshot Placeholder:**
+`screenshots/unload.png`
+(Shows module removal)
+
+---
+
+# 3. Demo with Screenshots
+
+## 3.1 Multi-container Supervision
+
+![Multi Container](screenshots/multi.png)
+Two containers running under one supervisor.
+
+---
+
+## 3.2 Metadata Tracking
+
+![PS Output](screenshots/ps.png)
+Shows tracked container metadata.
+
+---
+
+## 3.3 Logging System
+
+![Logs](screenshots/logs.png)
+Logs captured via pipe-based system.
+
+---
+
+## 3.4 CLI and IPC
+
+![CLI](screenshots/cli.png)
+Command issued via CLI and processed.
+
+---
+
+## 3.5 Soft-limit Warning
+
+![Soft Limit](screenshots/soft.png)
+Kernel log showing memory warning.
+
+---
+
+## 3.6 Hard-limit Enforcement
+
+![Kill](screenshots/kill.png)
+Container killed after exceeding memory limit.
+
+---
+
+## 3.7 Scheduling Experiment
+
+![Scheduling](screenshots/scheduling.png)
+Different behavior with scheduling priorities.
+
+---
+
+## 3.8 Clean Teardown
+
+![Cleanup](screenshots/cleanup.png)
+No zombie processes after shutdown.
+
+---
+
+# 4. Engineering Analysis
+
+### Namespace Isolation
+
+UTS and mount namespaces isolate hostname and filesystem.
+
+### Process Management
+
+Containers created using `clone()` and tracked via host PIDs.
+
+### Logging System
+
+Pipes redirect stdout/stderr to log files.
+
+### Kernel Monitoring
+
+Kernel module tracks memory using `task->mm`.
+
+### Scheduling
+
+Linux scheduling behavior observed using `nice`.
+
+---
+
+# 5. Design Decisions and Tradeoffs
+
+| Subsystem      | Decision               | Tradeoff           | Justification                        |
+| -------------- | ---------------------- | ------------------ | ------------------------------------ |
+| Namespaces     | Disabled PID namespace | Less isolation     | Required for correct kernel tracking |
+| Logging        | Pipe-based             | Blocking initially | Simpler design                       |
+| Kernel Monitor | Kernel thread          | Slight overhead    | Reliable execution                   |
+| Metadata       | File-based             | Not persistent     | Easy implementation                  |
+
+---
+
+# 6. Scheduler Experiment Results
+
+Example comparison:
+
+| Nice Value | Behavior         |
+| ---------- | ---------------- |
+| -5         | Higher CPU usage |
+| 10         | Lower priority   |
+
+Conclusion:
+Lower nice value → higher scheduling priority.
 
 ---
