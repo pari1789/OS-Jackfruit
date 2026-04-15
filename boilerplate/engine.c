@@ -128,6 +128,10 @@ typedef struct {
     container_record_t *containers;
 } supervisor_ctx_t;
 
+container_record_t *container_list = NULL;
+pthread_mutex_t list_lock = PTHREAD_MUTEX_INITIALIZER;
+
+
 static void usage(const char *prog)
 {
     fprintf(stderr,
@@ -338,7 +342,36 @@ void *logging_thread(void *arg)
  */
 int child_fn(void *arg)
 {
-    (void)arg;
+    child_config_t *config = (child_config_t *)arg;
+
+    /* redirect logs */
+    dup2(config->log_write_fd, STDOUT_FILENO);
+    dup2(config->log_write_fd, STDERR_FILENO);
+    close(config->log_write_fd);
+
+    printf("Container [%s] started!\n", config->id);
+
+    sethostname(config->id, strlen(config->id));
+
+    if (chroot(config->rootfs) != 0) {
+        perror("chroot failed");
+        return 1;
+    }
+
+    if (chdir("/") != 0) {
+        perror("chdir failed");
+        return 1;
+    }
+
+    mkdir("/proc", 0555); // ensure exists
+
+    if (mount("proc", "/proc", "proc", 0, NULL) != 0) {
+        perror("mount /proc failed");
+    }
+
+execlp("yes", "yes", NULL);    //execlp("/bin/sh", "/bin/sh", "-c", "while true; do sleep 5; done", NULL);
+
+    perror("exec failed");
     return 1;
 }
 
@@ -419,7 +452,29 @@ static int run_supervisor(const char *rootfs)
      *   4) spawn the logger thread
      *   5) enter the supervisor event loop
      */
-    fprintf(stderr, "Supervisor mode not implemented yet for base-rootfs: %s\n", rootfs);
+    printf("Supervisor started with base rootfs: %s\n", rootfs);
+
+    /* 1) Open monitor device (optional for now) */
+    ctx.monitor_fd = open("/dev/container_monitor", O_RDWR);
+    if (ctx.monitor_fd < 0) {
+        perror("Warning: could not open /dev/container_monitor");
+    }
+
+    /* 2) (Skip IPC for now — will implement later) */
+
+    /* 3) Signal handling */
+    signal(SIGCHLD, SIG_IGN);  // prevent zombies for now
+    signal(SIGINT, SIG_DFL);
+    signal(SIGTERM, SIG_DFL);
+
+    /* 4) (Skip logger thread for now) */
+
+    /* 5) Supervisor loop */
+    printf("Supervisor running... Press Ctrl+C to exit.\n");
+
+    while (1) {
+        pause();  // wait forever
+    }
 
     bounded_buffer_begin_shutdown(&ctx.log_buffer);
     bounded_buffer_destroy(&ctx.log_buffer);
@@ -444,27 +499,93 @@ static int send_control_request(const control_request_t *req)
 
 static int cmd_start(int argc, char *argv[])
 {
-    control_request_t req;
-
     if (argc < 5) {
-        fprintf(stderr,
-                "Usage: %s start <id> <container-rootfs> <command> [--soft-mib N] [--hard-mib N] [--nice N]\n",
-                argv[0]);
+        fprintf(stderr, "Usage: start <id> <rootfs> <command>\n");
         return 1;
     }
 
-    memset(&req, 0, sizeof(req));
-    req.kind = CMD_START;
-    strncpy(req.container_id, argv[2], sizeof(req.container_id) - 1);
-    strncpy(req.rootfs, argv[3], sizeof(req.rootfs) - 1);
-    strncpy(req.command, argv[4], sizeof(req.command) - 1);
-    req.soft_limit_bytes = DEFAULT_SOFT_LIMIT;
-    req.hard_limit_bytes = DEFAULT_HARD_LIMIT;
+    char *id = argv[2];
+    char *rootfs = argv[3];
 
-    if (parse_optional_flags(&req, argc, argv, 5) != 0)
+    printf("Starting container %s...\n", id);
+
+    /* create pipe */
+    int pipefd[2];
+    if (pipe(pipefd) != 0) {
+        perror("pipe failed");
         return 1;
+    }
 
-    return send_control_request(&req);
+    /* setup config */
+    child_config_t config;
+    memset(&config, 0, sizeof(config));
+    strncpy(config.id, id, sizeof(config.id) - 1);
+    strncpy(config.rootfs, rootfs, sizeof(config.rootfs) - 1);
+    config.log_write_fd = pipefd[1];
+
+    char *stack = malloc(STACK_SIZE);
+    if (!stack) {
+        perror("malloc");
+        return 1;
+    }
+
+    pid_t pid = clone(child_fn,
+                      stack + STACK_SIZE,
+                      CLONE_NEWPID | CLONE_NEWUTS | CLONE_NEWNS | SIGCHLD,
+                      &config);
+
+    if (pid == -1) {
+        perror("clone failed");
+        return 1;
+    }
+
+    setpgid(pid, pid);
+
+    printf("Container started with PID: %d\n", pid);
+
+        int monitor_fd = open("/dev/container_monitor", O_RDWR);
+    if (monitor_fd >= 0) {
+        if (register_with_monitor(monitor_fd, id, pid,
+                                DEFAULT_SOFT_LIMIT,
+                                DEFAULT_HARD_LIMIT) != 0) {
+            perror("monitor register failed");
+        }
+        close(monitor_fd);
+    } else {
+        perror("open monitor device failed");
+    }
+
+    /* save container */
+    FILE *f = fopen("containers.txt", "a");
+    if (f) {
+        fprintf(f, "%s %d\n", id, pid);
+        fclose(f);
+    }
+
+    /* logging */
+    close(pipefd[1]);
+
+    char log_path[256];
+    snprintf(log_path, sizeof(log_path), "logs/%s.log", id);
+
+    FILE *logf = fopen(log_path, "a");
+    if (!logf) {
+        perror("log file");
+        return 1;
+    }
+
+    char buffer[1024];
+    int n;
+
+    while ((n = read(pipefd[0], buffer, sizeof(buffer))) > 0) {
+        fwrite(buffer, 1, n, logf);
+        fflush(logf);
+    }
+
+    fclose(logf);
+    close(pipefd[0]);
+
+    return 0;
 }
 
 static int cmd_run(int argc, char *argv[])
@@ -491,26 +612,25 @@ static int cmd_run(int argc, char *argv[])
 
     return send_control_request(&req);
 }
-
 static int cmd_ps(void)
 {
-    control_request_t req;
+    FILE *f = fopen("containers.txt", "r");
+    if (!f) {
+        perror("open containers.txt");
+        return 1;
+    }
 
-    memset(&req, 0, sizeof(req));
-    req.kind = CMD_PS;
+    char id[64];
+    int pid;
 
-    /*
-     * TODO:
-     * The supervisor should respond with container metadata.
-     * Keep the rendering format simple enough for demos and debugging.
-     */
-    printf("Expected states include: %s, %s, %s, %s, %s\n",
-           state_to_string(CONTAINER_STARTING),
-           state_to_string(CONTAINER_RUNNING),
-           state_to_string(CONTAINER_STOPPED),
-           state_to_string(CONTAINER_KILLED),
-           state_to_string(CONTAINER_EXITED));
-    return send_control_request(&req);
+    printf("ID\tPID\n");
+
+    while (fscanf(f, "%s %d", id, &pid) == 2) {
+        printf("%s\t%d\n", id, pid);
+    }
+
+    fclose(f);
+    return 0;
 }
 
 static int cmd_logs(int argc, char *argv[])
@@ -531,19 +651,54 @@ static int cmd_logs(int argc, char *argv[])
 
 static int cmd_stop(int argc, char *argv[])
 {
-    control_request_t req;
-
     if (argc < 3) {
         fprintf(stderr, "Usage: %s stop <id>\n", argv[0]);
         return 1;
     }
 
-    memset(&req, 0, sizeof(req));
-    req.kind = CMD_STOP;
-    strncpy(req.container_id, argv[2], sizeof(req.container_id) - 1);
+    char *target_id = argv[2];
 
-    return send_control_request(&req);
+    FILE *f = fopen("containers.txt", "r");
+    if (!f) {
+        perror("open containers.txt");
+        return 1;
+    }
+
+    char id[64];
+    int pid;
+    int found = 0;
+
+    while (fscanf(f, "%s %d", id, &pid) == 2) {
+        if (strcmp(id, target_id) == 0) {
+            found = 1;
+            break;
+        }
+    }
+
+    fclose(f);
+
+    if (!found) {
+        printf("Container not found: %s\n", target_id);
+        return 1;
+    }
+
+    /* 🔥 IMPORTANT FIX: check if process exists */
+    if (kill(pid, 0) != 0) {
+        printf("Process already dead (PID %d)\n", pid);
+        return 1;
+    }
+
+    /* 🔥 IMPORTANT FIX: kill entire process group */
+    if (kill(-pid, SIGKILL) != 0) {
+        perror("kill failed");
+        return 1;
+    }
+
+    printf("Container %s (PID %d) stopped\n", target_id, pid);
+    return 0;
 }
+
+
 
 int main(int argc, char *argv[])
 {
