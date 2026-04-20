@@ -134,14 +134,14 @@ sudo rmmod monitor
 
 ## 3.4 CLI and IPC
 
-![CLI](screenshots/alpha_running.png)
+![CLI](images/alpha_running.png)
 Command issued via CLI and processed.
 
 ---
 
 ## 3.5 Soft-limit Warning
 
-![Soft Limit](screenshots/dmesg.png)
+![Soft Limit](images/dmesg.png)
 Kernel log showing memory warning.
 
 ---
@@ -162,7 +162,7 @@ Different behavior with scheduling priorities.
 
 ## 3.8 Clean Teardown
 
-![teardown](images/tear.png)
+![teardown](images/teardown.png)
 
 No zombie processes after shutdown.
 
