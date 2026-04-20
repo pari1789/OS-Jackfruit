@@ -6,8 +6,8 @@
 
 | Name      | SRN |
 | --------- | --- |
-| Your Name | SRN |
-| Teammate  | SRN |
+| Paridhi Bajpai | PES2UG24CS337 |
+| Nitya Kushwaha  | PES2UG24CS328 |
 
 ---
 
@@ -41,12 +41,6 @@ sudo insmod monitor.ko
 
 ```bash
 ls -l /dev/container_monitor
-```
-
-📸 **Screenshot Placeholder:**
-`screenshots/device.png`
-(Shows character device successfully created)
-
 ---
 
 ## Start Supervisor
@@ -54,11 +48,7 @@ ls -l /dev/container_monitor
 ```bash
 sudo ./engine supervisor ./rootfs-base
 ```
-
-📸 **Screenshot Placeholder:**
-`screenshots/supervisor.png`
-(Shows supervisor running)
-
+![sup running](images/sup_running.png)
 ---
 
 ## Prepare Root Filesystems
@@ -78,11 +68,6 @@ mkdir -p ./rootfs-beta/proc
 sudo ./engine start alpha ./rootfs-alpha /bin/sh --soft-mib 48 --hard-mib 80
 sudo ./engine start beta ./rootfs-beta /bin/sh --soft-mib 64 --hard-mib 96
 ```
-
-📸 **Screenshot Placeholder:**
-`screenshots/start.png`
-(Shows containers starting)
-
 ---
 
 ## List Containers
@@ -90,11 +75,6 @@ sudo ./engine start beta ./rootfs-beta /bin/sh --soft-mib 64 --hard-mib 96
 ```bash
 sudo ./engine ps
 ```
-
-📸 **Screenshot Placeholder:**
-`screenshots/ps.png`
-(Shows metadata tracking)
-
 ---
 
 ## View Logs
@@ -102,10 +82,6 @@ sudo ./engine ps
 ```bash
 sudo ./engine logs alpha
 ```
-
-📸 **Screenshot Placeholder:**
-`screenshots/logs.png`
-(Shows container logs)
 
 ---
 
@@ -115,11 +91,6 @@ sudo ./engine logs alpha
 sudo ./engine stop alpha
 sudo ./engine stop beta
 ```
-
-📸 **Screenshot Placeholder:**
-`screenshots/stop.png`
-(Shows containers being stopped)
-
 ---
 
 ## Inspect Kernel Logs
@@ -127,10 +98,6 @@ sudo ./engine stop beta
 ```bash
 dmesg | tail
 ```
-
-📸 **Screenshot Placeholder (MOST IMPORTANT):**
-`screenshots/kill.png`
-(Shows memory usage + container kill)
 
 ---
 
@@ -140,66 +107,63 @@ dmesg | tail
 sudo rmmod monitor
 ```
 
-📸 **Screenshot Placeholder:**
-`screenshots/unload.png`
-(Shows module removal)
-
 ---
 
 # 3. Demo with Screenshots
 
 ## 3.1 Multi-container Supervision
 
-![Multi Container](screenshots/multi.png)
-Two containers running under one supervisor.
+![Containers starting](images/multi_container.png)
+(Shows containers starting)Two containers running under one supervisor.
 
 ---
 
 ## 3.2 Metadata Tracking
 
-![PS Output](screenshots/ps.png)
-Shows tracked container metadata.
+![Metadata Tracking](images/engine_ps.png)
+(Shows metadata tracking)
 
 ---
 
 ## 3.3 Logging System
 
-![Logs](screenshots/logs.png)
-Logs captured via pipe-based system.
+![container logs](images/cat.png)
+(Shows container logs)
 
 ---
 
 ## 3.4 CLI and IPC
 
-![CLI](screenshots/cli.png)
+![CLI](screenshots/alpha_running.png)
 Command issued via CLI and processed.
 
 ---
 
 ## 3.5 Soft-limit Warning
 
-![Soft Limit](screenshots/soft.png)
+![Soft Limit](screenshots/dmesg.png)
 Kernel log showing memory warning.
 
 ---
 
 ## 3.6 Hard-limit Enforcement
 
-![Kill](screenshots/kill.png)
-Container killed after exceeding memory limit.
+![KIll](images/killing.png)
+(Shows memory usage + container kill after a limit)
 
 ---
 
 ## 3.7 Scheduling Experiment
 
-![Scheduling](screenshots/scheduling.png)
+![schedl](images/sched.png)
 Different behavior with scheduling priorities.
 
 ---
 
 ## 3.8 Clean Teardown
 
-![Cleanup](screenshots/cleanup.png)
+![teardown](images/tear.png)
+
 No zombie processes after shutdown.
 
 ---
